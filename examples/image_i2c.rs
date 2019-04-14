@@ -23,7 +23,6 @@
 #![no_std]
 #![no_main]
 
-extern crate bit_field;
 extern crate cortex_m;
 extern crate cortex_m_rt as rt;
 extern crate fixed;
@@ -50,9 +49,6 @@ use fixed::frac::U16;
 use fixed::FixedI32;
 
 type F32 = FixedI32<U16>;
-
-use bit_field::BitArray;
-use bit_field::BitField;
 
 macro_rules! F {
     ($v:expr) => {
@@ -88,28 +84,28 @@ fn sin(x: F32) -> F32 {
 
 fn cos(x: F32) -> F32 {
     sin(x + F!(0.25))
-    // let x2 = x * x;
-    // let x4 = x2 * x * x;
-    // let x6 = x4 * x * x;
-    // 1.0 - x2 / 2.0 + x4 / 24.0 - x6 / 720.0
 }
 
-const W8: u32 = 64 / 8;
-
-fn get_px(xs: &[u8], x: u32, y: u32, w: u32, h: u32) -> u8 {
+fn get_px(xs: &[u8], x: u32, y: u32, w: u32, h: u32) -> bool {
     if x >= w || y >= h {
-        return 0;
+        return false;
     }
-    let bit_n = 7 - x % 8;
-    let coord = (y * W8 + (x / 8)) as usize;
-    (xs[coord] & (1 << bit_n)) >> bit_n
+    let slice_index = (y * w + x) / 8;
+    let bit_index = 7 - x % 8;
+    (xs[slice_index as usize] & (1 << bit_index)) != 0
 }
 
-fn set_px(xs: &mut [u8], v: u8, x: u32, y: u32, w: u32, h: u32) {
-    let bit_n = 7 - x % 8;
-    let coord = (y * W8 + (x / 8)) as usize;
-    let v0 = xs[coord] & !(1 << bit_n);
-    xs[coord] = v0 | (v << bit_n);
+fn set_px(xs: &mut [u8], v: bool, x: u32, y: u32, w: u32, h: u32) {
+    if x >= w || y >= h {
+        return;
+    }
+    let slice_index = (y * w + x) / 8;
+    let bit_index = 7 - x % 8;
+    if v {
+        xs[slice_index as usize] |= 1 << bit_index;
+    } else {
+        xs[slice_index as usize] &= !(1 << bit_index);
+    }
 }
 
 fn rotate(dst: &mut [u8], src: &[u8], w: u32, h: u32, rot: u8) {
@@ -127,6 +123,8 @@ fn rotate(dst: &mut [u8], src: &[u8], w: u32, h: u32, rot: u8) {
             let _x = F!(x as f32) - w2;
             let x0 = a * _x + _x0;
             let y0 = c * _x + _y0;
+            // let v = get_px(src, x, y, w, h);
+            // set_px(dst, v, (x0 + w2).to_int(), (y0 + w2).to_int(), w, h);
             let v = get_px(src, (x0 + w2).to_int(), (y0 + w2).to_int(), w, h);
             set_px(dst, v, x, y, w, h);
         }
@@ -140,7 +138,17 @@ fn main() -> ! {
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
 
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    // rcc.cfgr = rcc.cfgr.use_hse(8.mhz());
+
+    let clocks = rcc
+        .cfgr
+        .use_hse(8.mhz())
+        // .sysclk(64.mhz())
+        // .pclk1(32.mhz())
+        .sysclk(72.mhz())
+        .pclk1(36.mhz())
+        .freeze(&mut flash.acr);
+    // let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
     let mut afio = dp.AFIO.constrain(&mut rcc.apb2);
 
@@ -158,7 +166,7 @@ fn main() -> ! {
         (scl, sda),
         &mut afio.mapr,
         Mode::Fast {
-            frequency: 400_000,
+            frequency: 800_000,
             duty_cycle: DutyCycle::Ratio2to1,
         },
         clocks,
@@ -188,17 +196,22 @@ fn main() -> ! {
     // Wait for the timer to trigger an update and change the state of the LED
     //let mut timer = Timer::syst(cp.SYST, 8.hz(), clocks);
     let mut rot = 0;
+    let mut toggle = false;
     loop {
         // hprintln!("loop {}", rot).unwrap();
         // block!(timer.wait()).unwrap();
         // block!(timer.wait()).unwrap();
-        led.set_low();
         rotate(&mut im_raw_rot, &im_raw, W, H, rot);
         let im = Image1BPP::new(&im_raw_rot[..], H, W);
         disp.draw(im.translate(Coord::new(32, 0)).into_iter());
         disp.flush().unwrap();
-        led.set_high();
         rot += 2;
+        if toggle {
+            led.set_low();
+        } else {
+            led.set_high();
+        }
+        toggle = !toggle;
     }
 }
 
