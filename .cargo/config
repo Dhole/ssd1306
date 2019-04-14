@@ -1,23 +1,23 @@
 [target.thumbv6m-none-eabi]
-runner = 'gdb-multiarch'
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
 
 [target.thumbv7m-none-eabi]
-runner = 'gdb-multiarch'
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
 
 [target.thumbv7em-none-eabi]
-runner = 'gdb-multiarch'
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
 
 [target.thumbv7em-none-eabihf]
-runner = 'gdb-multiarch'
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
